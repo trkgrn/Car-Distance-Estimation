@@ -150,5 +150,5 @@ class DistanceEstimationDetector:
 
 
 # DistanceEstimationDetector objesi oluşturulması
-detector = DistanceEstimationDetector(video_path='input/car_input1.mp4', model_path='yolov5s.pt')
+detector = DistanceEstimationDetector(video_path='input/car_input.mp4', model_path='yolov5s.pt')
 detector()
