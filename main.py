@@ -32,12 +32,10 @@ class DistanceEstimationDetector:
         :return: Yüklenip konfigüre edilmiş model
         """
         model = yolov5.load(model_path)
-        model.conf = 0.50  # Tespit edilen objenin güven eşik (confidence threshold) değeri
+        model.conf = 0.40  # Tespit edilen objenin güven eşik (confidence threshold) değeri
         model.iou = 0.45  # NMS IoU threshold
-        model.agnostic = False  # NMS class-agnostic
-        model.multi_label = False  # NMS multiple labels per box
-        model.max_det = 1000  # maximum number of detections per image
-        model.classes = [2, 5, 7]  # Sadece araçların tespit edilmesi
+        model.max_det = 1000  # max tespit sayısı (bir frame için)
+        model.classes = [2]  # Sadece araçların tespit edilmesi
         return model
 
     def get_model_results(self, frame):
@@ -48,20 +46,12 @@ class DistanceEstimationDetector:
         """
         self.model.to(self.device)
         frame = [frame]
-        results = self.model(frame)
+        results = self.model(frame,size=640)
         predictions = results.xyxyn[0]
         cords, scores, labels = predictions[:, :4], predictions[:, 4], predictions[:,5]
 
         return cords, scores, labels
 
-    def write_rect(self, index, score):
-        """
-        Rectangle üzerine yazılması gereken obje class name ve threshold değerlerini döndürür
-        :param index: Tespit edilen objenin coco.yml 'de karşılık gelen index değeri
-        :param score: Tespit edilen objenin confidence threshold değeri
-        :return: Rectangle üzerine yazılacak text
-        """
-        return self.classes[int(index)] + ' ' + str(round(score, 2)) + ' m'
 
     def draw_rect(self, results, frame):
         """
@@ -78,9 +68,7 @@ class DistanceEstimationDetector:
             row = cord[i]
             x1, y1, x2, y2 = int(row[0] * x_shape), int(row[1] * y_shape), int(row[2] * x_shape), int(row[3] * y_shape)
             green_bgr = (0, 255, 0)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), green_bgr, 1)
-        #  cv2.putText(frame, self.write_rect(labels[i], float(scores[i])), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
-        #              green_bgr, 2)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), green_bgr, 1) # Dikdörtgenin çizdirilmesi
 
         return frame
 
@@ -107,7 +95,12 @@ class DistanceEstimationDetector:
         start_x, start_y = x_shape_mid, y_shape
         start_point = (start_x, start_y)
 
+        heigth_in_rf = 121
+        measured_distance = 275  # inch =700cm
+        real_heigth = 60  # inch = 150 cm
+        focal_length = (heigth_in_rf * measured_distance) / real_heigth
 
+        pixel_per_cm = float(2200 / x_shape) * 2.54
         for i in range(0, len(points)):
             end_x1, end_y1, end_x2, end_y2, end_x_mid_rect, end_y_mid_rect, end_x_line_length, end_y_line_length = points[i]
             if end_x2 < x_shape_mid: # Araç solda ise
@@ -119,13 +112,16 @@ class DistanceEstimationDetector:
 
             dif_x, dif_y = abs(start_point[0] - end_point[0]), abs(start_point[1] - end_point[1])
             pixel_count = math.sqrt(math.pow(dif_x, 2) + math.pow(dif_y, 2))
-            pixel_per_cm = float(2500 / x_shape)
-            distance = float(pixel_count * pixel_per_cm * 1.2 / end_y_line_length)
+
+            distance = float(pixel_count * pixel_per_cm  / end_y_line_length)
+
+            # distance = real_heigth * focal_length / abs(end_y1 - end_y2);
+            # distance = distance * 2.54 / 100
             #  print(distance)
             cv2.line(frame, start_point, end_point, color=(0, 0, 255), thickness=1)
-            cv2.putText(frame, str(round(distance, 2)), (int(end_x1), int(end_y2)), cv2.FONT_HERSHEY_DUPLEX,
+            cv2.putText(frame, str(round(distance, 2)) +" m", (int(end_x1), int(end_y2)), cv2.FONT_HERSHEY_DUPLEX,
                         0.5, (255, 255, 255), 2)
-
+            cv2.putText(frame, str(int(scores[i] * 100)) + "% Car", (int(end_x1), int(end_y1)), cv2.FONT_HERSHEY_DUPLEX,0.5, (255, 255, 0), 2)
         return frame
 
     def __call__(self):
@@ -154,5 +150,5 @@ class DistanceEstimationDetector:
 
 
 # DistanceEstimationDetector objesi oluşturulması
-detector = DistanceEstimationDetector(video_path='input/car_input.mp4', model_path='yolov5s.pt')
+detector = DistanceEstimationDetector(video_path='input/car_input1.mp4', model_path='yolov5s.pt')
 detector()
